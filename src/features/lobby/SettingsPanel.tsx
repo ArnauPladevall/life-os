@@ -1,34 +1,18 @@
 "use client";
+
 import { motion } from "framer-motion";
-import { X, LogOut, Type, Layout, Image as ImageIcon, Briefcase, Terminal, Coffee, Home, Zap, Monitor } from "lucide-react";
+import {
+  Image as ImageIcon,
+  Layout,
+  LogOut,
+  Type,
+  X,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { useLocale } from "@/context/LocaleContext";
+import type { Preferences } from "./types";
 
-// Iconos disponibles en lugar de emojis
-const ICONS = [
-  { id: 'briefcase', icon: <Briefcase size={18}/> },
-  { id: 'terminal', icon: <Terminal size={18}/> },
-  { id: 'coffee', icon: <Coffee size={18}/> },
-  { id: 'home', icon: <Home size={18}/> },
-  { id: 'zap', icon: <Zap size={18}/> },
-  { id: 'monitor', icon: <Monitor size={18}/> },
-];
-
-const BACKGROUNDS = [
-  { id: "default", name: "Void", class: "bg-[#050505]" },
-  { id: "aurora", name: "Aurora", class: "bg-gradient-to-br from-gray-900 via-purple-900/20 to-black" },
-  { id: "midnight", name: "Midnight", class: "bg-gradient-to-b from-blue-950/30 to-black" },
-  { id: "forest", name: "Forest", class: "bg-gradient-to-br from-green-950/30 to-black" },
-];
-
-interface Preferences {
-  showHeader: boolean;
-  bgId: string;
-  customTitle?: string;
-  iconId?: string; // Usamos ID de icono, no emoji
-  titleAlign?: 'center' | 'left';
-}
+const EMOJIS = ["💻", "🧠", "⚡", "🪐", "🎯", "🔒"];
 
 interface Props {
   onClose: () => void;
@@ -39,92 +23,178 @@ interface Props {
 export function SettingsPanel({ onClose, preferences, onUpdatePref }: Props) {
   const supabase = createClient();
   const router = useRouter();
-  const { t } = useLocale();
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    router.replace('/login');
+    router.refresh();
   };
 
-  const prefs = { customTitle: "LifeOS", iconId: 'terminal', showHeader: true, bgId: "default", ...preferences };
+  const prefs: Preferences = {
+    showHeader: true,
+    bgId: "aurora",
+    customTitle: "Life OS",
+    emoji: "💻",
+    emojiPosition: "inline",
+    titleAlign: "center",
+    ...preferences,
+  };
+
+  const backgrounds = [
+    {
+      id: "aurora",
+      name: "Aurora",
+      preview:
+        "bg-[radial-gradient(circle_at_20%_25%,rgba(59,130,246,0.25),transparent_30%),radial-gradient(circle_at_80%_20%,rgba(139,92,246,0.28),transparent_32%),radial-gradient(circle_at_50%_85%,rgba(16,185,129,0.14),transparent_32%),linear-gradient(180deg,#07080c_0%,#040507_100%)]",
+    },
+    {
+      id: "midnight",
+      name: "Midnight",
+      preview:
+        "bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.22),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(6,182,212,0.16),transparent_30%),linear-gradient(180deg,#07121f_0%,#020407_100%)]",
+    },
+    {
+      id: "slate",
+      name: "Slate",
+      preview:
+        "bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.16),transparent_28%),linear-gradient(180deg,#0b0f14_0%,#050507_100%)]",
+    },
+  ];
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-        className="glass-panel w-full max-w-md overflow-hidden flex flex-col max-h-[85vh]"
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={onClose} />
+
+      <motion.div
+        initial={{ opacity: 0, scale: 0.98, y: 14 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.98, y: 14 }}
+        className="relative z-10 flex max-h-[86vh] w-full max-w-md flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-[#0b0c10]/95 shadow-[0_30px_90px_rgba(0,0,0,0.45)] backdrop-blur-2xl"
       >
-        {/* Header */}
-        <div className="flex justify-between items-center p-5 border-b border-white/5 bg-[#121212]">
-          <h2 className="text-sm font-bold text-white uppercase tracking-wider">{t('settings_title')}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={18}/></button>
+        <div className="flex items-center justify-between border-b border-white/6 px-6 py-5">
+          <div>
+            <h2 className="text-2xl font-semibold tracking-tight text-white">Ajustes</h2>
+            <p className="mt-1 text-sm text-white/40">Base visual y comportamiento general</p>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="rounded-full border border-white/10 p-2 text-white/55 transition hover:bg-white/[0.06] hover:text-white"
+          >
+            <X size={18} />
+          </button>
         </div>
 
-        {/* Body */}
-        <div className="p-6 space-y-8 overflow-y-auto">
-          
-          {/* Identidad */}
+        <div className="custom-scrollbar space-y-7 overflow-y-auto px-6 py-6">
           <section className="space-y-4">
-            <h3 className="text-xs font-bold text-blue-400 uppercase tracking-widest">{t('settings_identity')}</h3>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.3em] text-white/38">
+              Identidad
+            </div>
+
             <div className="space-y-3">
-              <label className="text-xs text-gray-500 font-bold">{t('settings_spaceName').toUpperCase()}</label>
+              <label className="block text-xs text-white/40">Título</label>
               <div className="relative">
-                <Type className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16}/>
-                <input 
-                  type="text" 
-                  value={prefs.customTitle}
+                <Type size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+                <input
+                  type="text"
+                  value={prefs.customTitle || ""}
                   onChange={(e) => onUpdatePref({ ...prefs, customTitle: e.target.value })}
-                  className="input-pro pl-10"
-                  placeholder={t('settings_spaceName_placeholder')}
+                  className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] py-3 pl-10 pr-4 text-white outline-none transition placeholder:text-white/20 focus:border-white/20 focus:bg-white/[0.05]"
+                  placeholder="Life OS"
                 />
               </div>
+            </div>
 
-              <label className="text-xs text-gray-500 font-bold mt-2 block">{t('settings_icon').toUpperCase()}</label>
-              <div className="flex gap-2">
-                {ICONS.map((item) => (
+            <div className="space-y-3">
+              <label className="block text-xs text-white/40">Icono</label>
+              <div className="grid grid-cols-6 gap-2">
+                {EMOJIS.map((emoji, index) => (
                   <button
-                    key={item.id}
-                    onClick={() => onUpdatePref({ ...prefs, iconId: item.id })}
-                    className={`p-3 rounded-lg border transition-all ${prefs.iconId === item.id ? 'bg-blue-600/20 border-blue-500 text-blue-400' : 'bg-[#181818] border-white/5 text-gray-500 hover:text-gray-300'}`}
+                    key={`${emoji}-${index}`}
+                    onClick={() => onUpdatePref({ ...prefs, emoji })}
+                    className={`flex h-12 items-center justify-center rounded-[1rem] border text-xl transition ${
+                      prefs.emoji === emoji
+                        ? "border-white bg-white text-black"
+                        : "border-white/10 bg-white/[0.04] text-white/80 hover:bg-white/[0.06]"
+                    }`}
                   >
-                    {item.icon}
+                    {emoji}
                   </button>
                 ))}
               </div>
             </div>
+
+            <div className="space-y-3">
+              <label className="block text-xs text-white/40">Composición del encabezado</label>
+              <div className="grid grid-cols-2 gap-2 rounded-[1.25rem] border border-white/10 bg-white/[0.03] p-1">
+                <button
+                  onClick={() => onUpdatePref({ ...prefs, emojiPosition: "inline" })}
+                  className={`rounded-[1rem] px-4 py-2.5 text-sm transition ${
+                    prefs.emojiPosition === "inline" ? "bg-white text-black" : "text-white/55"
+                  }`}
+                >
+                  En línea
+                </button>
+                <button
+                  onClick={() => onUpdatePref({ ...prefs, emojiPosition: "top" })}
+                  className={`rounded-[1rem] px-4 py-2.5 text-sm transition ${
+                    prefs.emojiPosition === "top" ? "bg-white text-black" : "text-white/55"
+                  }`}
+                >
+                  Vertical
+                </button>
+              </div>
+            </div>
           </section>
 
-          {/* Apariencia */}
           <section className="space-y-4">
-            <h3 className="text-xs font-bold text-purple-400 uppercase tracking-widest">{t('settings_visual')}</h3>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.3em] text-white/38">
+              Apariencia
+            </div>
 
-            <div className="flex items-center justify-between p-3 bg-[#181818] rounded-lg border border-white/5">
+            <div className="flex items-center justify-between rounded-[1.4rem] border border-white/10 bg-white/[0.03] px-4 py-4">
               <div className="flex items-center gap-3">
-                <Layout size={18} className="text-gray-400"/>
-                <span className="text-sm font-medium">{t('settings_showHeader')}</span>
+                <Layout size={17} className="text-white/40" />
+                <div>
+                  <div className="text-sm font-medium text-white">Mostrar encabezado</div>
+                  <div className="text-xs text-white/38">Título visible en la parte superior</div>
+                </div>
               </div>
-              <button 
+
+              <button
                 onClick={() => onUpdatePref({ ...prefs, showHeader: !prefs.showHeader })}
-                className={`w-10 h-5 rounded-full relative transition-colors ${prefs.showHeader ? 'bg-blue-600' : 'bg-white/10'}`}
+                className={`relative h-7 w-12 rounded-full transition ${
+                  prefs.showHeader ? "bg-white" : "bg-white/12"
+                }`}
               >
-                <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${prefs.showHeader ? 'left-6' : 'left-1'}`} />
+                <div
+                  className={`absolute top-1 h-5 w-5 rounded-full transition ${
+                    prefs.showHeader ? "left-6 bg-black" : "left-1 bg-white"
+                  }`}
+                />
               </button>
             </div>
 
-            <div>
-              <div className="flex items-center gap-2 mb-3 text-xs font-bold text-gray-500 uppercase">
-                <ImageIcon size={14} /> {t('settings_background')}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-xs text-white/40">
+                <ImageIcon size={15} />
+                Fondo
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                {BACKGROUNDS.map(bg => (
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {backgrounds.map((bg) => (
                   <button
                     key={bg.id}
                     onClick={() => onUpdatePref({ ...prefs, bgId: bg.id })}
-                    className={`h-20 rounded-xl border-2 transition-all relative overflow-hidden ${bg.class} ${prefs.bgId === bg.id ? 'border-blue-500 shadow-lg' : 'border-transparent hover:border-white/20'}`}
+                    className={`overflow-hidden rounded-[1.35rem] border transition ${
+                      prefs.bgId === bg.id
+                        ? "border-white shadow-[0_0_0_1px_rgba(255,255,255,0.25)]"
+                        : "border-white/10"
+                    }`}
                   >
-                    <span className="absolute bottom-2 left-3 text-[10px] font-bold text-white drop-shadow-md bg-black/50 px-2 py-0.5 rounded">{bg.name}</span>
+                    <div className={`h-24 w-full ${bg.preview}`} />
+                    <div className="border-t border-white/6 bg-black/20 px-3 py-2 text-left text-sm text-white">
+                      {bg.name}
+                    </div>
                   </button>
                 ))}
               </div>
@@ -132,10 +202,13 @@ export function SettingsPanel({ onClose, preferences, onUpdatePref }: Props) {
           </section>
         </div>
 
-        {/* Footer */}
-        <div className="p-5 border-t border-white/5 bg-[#121212]">
-          <button onClick={handleLogout} className="w-full py-3 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 font-bold text-sm flex items-center justify-center gap-2 transition-colors">
-            <LogOut size={16}/> {t('logout')}
+        <div className="border-t border-white/6 px-6 py-5">
+          <button
+            onClick={handleLogout}
+            className="flex w-full items-center justify-center gap-2 rounded-[1.25rem] border border-red-500/15 bg-red-500/8 px-4 py-4 font-medium text-red-400 transition hover:bg-red-500/12"
+          >
+            <LogOut size={18} />
+            Cerrar sesión
           </button>
         </div>
       </motion.div>

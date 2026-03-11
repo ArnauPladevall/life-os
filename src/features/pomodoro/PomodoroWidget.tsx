@@ -1,82 +1,100 @@
 "use client";
 
-import { Play, Pause, RotateCcw, Timer, SkipForward } from "lucide-react";
-import { usePomodoro } from "./usePomodoro";
-import { useLocale } from "@/context/LocaleContext";
+import { useState, useEffect } from "react";
+import { Play, Pause, RotateCcw } from "lucide-react";
+import { motion } from "framer-motion";
 
-import type { WidgetSize } from "@/features/lobby/SmartWidget";
+export default function PomodoroWidget() {
+  // --- LÓGICA (El Cerebro) ---
+  // Tiempo inicial: 25 minutos (25 * 60 segundos)
+  const [timeLeft, setTimeLeft] = useState(25 * 60);
+  const [isActive, setIsActive] = useState(false);
+  const [mode, setMode] = useState<"focus" | "break">("focus"); // 'focus' o 'break'
 
-export default function PomodoroWidget({ size }: { size: WidgetSize }) {
-  const { t } = useLocale();
-  const { mode, isActive, timeLeft, toggle, reset, skip, format, progress } = usePomodoro();
+  // Efecto que hace funcionar el reloj
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
 
-  const compact = size === "1x1";
-  const wide = size === "4x2";
+    if (isActive && timeLeft > 0) {
+      interval = setInterval(() => {
+        setTimeLeft((seconds) => seconds - 1);
+      }, 1000);
+    } else if (timeLeft === 0) {
+      setIsActive(false);
+      // Aquí añadiremos sonido más adelante
+    }
 
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isActive, timeLeft]);
+
+  // Botón Play/Pause
+  const toggleTimer = () => setIsActive(!isActive);
+  
+  // Botón Reset
+  const resetTimer = () => {
+    setIsActive(false);
+    setTimeLeft(mode === "focus" ? 25 * 60 : 5 * 60);
+  };
+
+  // Formato de tiempo (MM:SS)
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  // Calcular porcentaje para la barra de progreso
+  const totalTime = mode === "focus" ? 25 * 60 : 5 * 60;
+  const progressPercentage = (1 - timeLeft / totalTime) * 100;
+
+  // --- UI (Lo que se ve) ---
   return (
-    <div className="h-full w-full flex flex-col">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 bg-white/5 rounded-lg border border-white/10">
-            <Timer size={16} className="text-white/80" />
-          </div>
-          <div>
-            <div className="text-sm font-semibold text-white">{t('app_pomodoro')}</div>
-            <div className="text-[10px] uppercase tracking-widest text-white/40">
-              {mode === "focus" ? `${t('pomodoro_focus')} 50` : `${t('pomodoro_break')} 10`}
-            </div>
-          </div>
-        </div>
-        {!compact && (
-          <div className={`text-[10px] px-2 py-1 rounded-full border ${isActive ? "bg-green-500/15 border-green-500/30 text-green-300" : "bg-white/5 border-white/10 text-white/40"}`}>
-            {isActive ? t('pomodoro_status_run') : t('pomodoro_status_idle')}
-          </div>
-        )}
+    <motion.div 
+      whileHover={{ y: -5 }}
+      className="glass-panel p-6 rounded-2xl flex flex-col items-center justify-between min-h-[220px] relative"
+    >
+      {/* Cabecera */}
+      <div className="w-full flex justify-between items-center mb-4 z-10">
+        <h2 className="text-xl font-bold flex items-center gap-2 text-white">
+          <span>⏱️</span> Pomodoro
+        </h2>
+        <span className={`text-xs px-2 py-1 rounded-full border transition-colors ${
+          isActive 
+            ? "bg-green-500/20 border-green-500 text-green-400" 
+            : "bg-white/10 border-white/20 text-gray-400"
+        }`}>
+          {isActive ? "Running" : "Idle"}
+        </span>
       </div>
 
-      <div className="flex-1 flex items-center justify-center">
-        <div className={`${compact ? "text-4xl" : wide ? "text-6xl" : "text-5xl"} font-mono font-bold tracking-wider text-transparent bg-clip-text bg-gradient-to-b from-white to-white/50`}>
-          {format(timeLeft)}
-        </div>
+      {/* Reloj Gigante */}
+      <div className="text-6xl font-mono font-bold tracking-wider text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-400 z-10 my-4">
+        {formatTime(timeLeft)}
       </div>
 
-      {!compact && (
-        <div className="mt-3 flex items-center gap-2">
+      {/* Controles */}
+      <div className="flex gap-4 z-10">
         <button
-          onClick={(e) => { e.stopPropagation(); toggle(); }}
-          className="flex-1 h-10 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-white flex items-center justify-center transition-colors"
+          onClick={toggleTimer}
+          className="p-4 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-all active:scale-95 flex items-center justify-center border border-white/5 backdrop-blur-sm"
         >
-          {isActive ? <Pause size={18} /> : <Play size={18} />}
+          {isActive ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
         </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); reset(); }}
-          className="h-10 w-10 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 hover:text-white flex items-center justify-center transition-colors"
-        >
-          <RotateCcw size={16} />
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); skip(); }}
-          className="h-10 w-10 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 hover:text-white flex items-center justify-center transition-colors"
-          aria-label={t('pomodoro_skip')}
-          title={t('pomodoro_skip')}
-        >
-          <SkipForward size={16} />
-        </button>
-        </div>
-      )}
 
-      {compact && (
         <button
-          onClick={(e) => { e.stopPropagation(); toggle(); }}
-          className="mt-2 h-10 w-full rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 text-white flex items-center justify-center transition-colors"
+          onClick={resetTimer}
+          className="p-4 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-all active:scale-95 border border-white/5 backdrop-blur-sm"
         >
-          {isActive ? <Pause size={18} /> : <Play size={18} />}
+          <RotateCcw size={20} />
         </button>
-      )}
-
-      <div className="mt-3 h-1.5 rounded-full bg-white/5 overflow-hidden">
-        <div className="h-full bg-white/20" style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} />
       </div>
-    </div>
+
+      {/* Barra de progreso en la parte inferior (borde de color) */}
+      <div className="absolute bottom-0 left-0 h-1 bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-1000 ease-linear"
+           style={{ width: `${progressPercentage}%` }} 
+      />
+    </motion.div>
   );
 }

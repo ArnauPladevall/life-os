@@ -16,27 +16,6 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-## LifeOS – Apple Music (MusicKit)
-
-The **Music** widget/app supports **Apple Music playback + playlist browsing** through **MusicKit JS**.
-
-### 1) Create a Developer Token (JWT)
-Apple requires a *developer token* (JWT, ES256) created from your Apple Developer account.
-
-Add it to `.env.local`:
-
-```bash
-APPLE_MUSIC_DEVELOPER_TOKEN="<YOUR_DEVELOPER_JWT>"
-```
-
-This token is read server-side and served to the client via:
-
-`GET /api/apple-music/developer-token`
-
-### 2) User Authorization
-In the Music app, click **Conectar Apple Music**. MusicKit will prompt the user and return a **user token**.
-LifeOS persists it (local + profile state) so you don’t have to reconnect on every device.
-
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
@@ -55,21 +34,3 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
-
-## Setup (quick)
-
-1. Copy `.env.example` → `.env.local` and fill:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-
-2. In Supabase, run `docs/supabase.sql` (SQL Editor) to create tables + RLS.
-
-3. Install and run:
-```bash
-npm install
-npm run dev
-```
-
-## Deploy
-See `docs/deploy-hostinger.md`

@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google"; // Importamos la fuente profesional
 import "./globals.css";
-import { LocaleProvider } from "@/context/LocaleContext";
 
 // Configuramos la fuente Inter
 const inter = Inter({ subsets: ["latin"] });
@@ -24,9 +23,9 @@ export default function RootLayout({
         <div className="aurora-bg animate-aurora pointer-events-none" />
         
         {/* El contenido de la página va encima */}
-        <LocaleProvider>
-          <div className="relative z-10">{children}</div>
-        </LocaleProvider>
+        <div className="relative z-10">
+          {children}
+        </div>
 
       </body>
     </html>

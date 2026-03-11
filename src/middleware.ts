@@ -56,20 +56,16 @@ export async function middleware(request: NextRequest) {
 
   const { data: { session } } = await supabase.auth.getSession()
 
-  const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '')
-  const homePath = basePath ? basePath : '/'
-  const loginPath = basePath ? `${basePath}/login` : '/login'
-
   // REGLAS DE TRÁFICO:
   
-  // 1. Si NO hay sesión y estás en la Home -> Vete al Login
-  if (!session && request.nextUrl.pathname === homePath) {
-    return NextResponse.redirect(new URL(loginPath, request.url))
+  // 1. Si NO hay sesión y estás en la Home (/) -> Vete al Login
+  if (!session && request.nextUrl.pathname === '/') {
+    return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // 2. Si SÍ hay sesión y estás en el Login -> Vete a la Home
-  if (session && request.nextUrl.pathname.startsWith(loginPath)) {
-    return NextResponse.redirect(new URL(homePath, request.url))
+  // 2. Si SÍ hay sesión y estás en el Login (/login) -> Vete a la Home
+  if (session && request.nextUrl.pathname.startsWith('/login')) {
+    return NextResponse.redirect(new URL('/', request.url))
   }
 
   return response

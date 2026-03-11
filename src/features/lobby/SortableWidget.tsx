@@ -11,18 +11,11 @@ interface Props {
 }
 
 export function SortableWidget({ id, children, isEditing }: Props) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging
-  } = useSortable({ 
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
     transition: {
-      duration: 250,
-      easing: 'cubic-bezier(0.25, 1, 0.5, 1)', // Transición más suave tipo iOS
+      duration: 220,
+      easing: "cubic-bezier(0.22, 1, 0.36, 1)",
     },
   });
 
@@ -31,32 +24,31 @@ export function SortableWidget({ id, children, isEditing }: Props) {
     transition,
     zIndex: isDragging ? 100 : 1,
     position: "relative" as const,
-    height: "100%", 
+    height: "100%",
     touchAction: "none",
   };
 
-  // LA CLAVE: Reducimos drásticamente el ángulo de rotación
   const jiggleVariants = {
-    shaking: {
-      rotate: [-0.2, 0.2, -0.2], // Mucho más sutil
+    idle: { rotate: 0 },
+    editing: {
+      rotate: [-0.25, 0.25, -0.25],
       transition: {
         repeat: Infinity,
-        duration: 0.25, // Un poco más rápido para que parezca vibración
-        ease: "linear"
-      }
+        duration: 0.24,
+        ease: "linear",
+      },
     },
-    static: { rotate: 0 }
   };
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="h-full select-none">
-      <motion.div 
+      <motion.div
         className="h-full w-full"
         variants={jiggleVariants}
-        animate={isEditing && !isDragging ? "shaking" : "static"} // No tiembla si lo estás arrastrando
+        animate={isEditing && !isDragging ? "editing" : "idle"}
       >
-        <div className={`h-full w-full transition-all duration-300 ${isDragging ? 'opacity-80 scale-[1.02] shadow-2xl' : 'opacity-100'}`}>
-           {children}
+        <div className={`h-full w-full transition-all duration-200 ${isDragging ? "scale-[1.02] opacity-85" : "opacity-100"}`}>
+          {children}
         </div>
       </motion.div>
     </div>

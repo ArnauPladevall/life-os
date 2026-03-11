@@ -1,102 +1,101 @@
 "use client";
 
-import { Maximize2, Palette, X } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
-
-// Definimos tamaños basados en columnas (Grid de 6 columnas)
-export type WidgetSize = "1x1" | "2x1" | "2x2" | "4x2";
+import { Maximize2, Palette, Trash2 } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { getWidgetDefinition, WIDGET_TONE_CLASSES } from "./widgetRegistry";
+import type { LobbyWidget } from "./types";
 
 interface Props {
-  id: string;
-  type: string;
-  size: WidgetSize;
-  color: string;
+  widget: LobbyWidget;
   isEditing: boolean;
   onOpenColor: (e: React.PointerEvent) => void;
   onOpenSize: (e: React.PointerEvent) => void;
   onRemove: () => void;
-  onOpenApp?: (rect: DOMRect) => void; // Abrir App completa (rect para animación)
-  children?: React.ReactNode; // El contenido del widget (Mini View)
+  onExpand: () => void;
 }
 
-export function SmartWidget({ 
-  type, 
-  size, 
-  color, 
-  isEditing, 
-  onOpenColor, 
-  onOpenSize, 
+export function SmartWidget({
+  widget,
+  isEditing,
+  onOpenColor,
+  onOpenSize,
   onRemove,
-  onOpenApp,
-  children 
+  onExpand,
 }: Props) {
-  
+  const definition = getWidgetDefinition(widget.type);
+
+  if (!definition) {
+    return (
+      <div className="flex h-full w-full items-center justify-center rounded-[2rem] border border-white/10 bg-white/[0.03] text-sm text-white/45">
+        Unknown widget: {widget.type}
+      </div>
+    );
+  }
+
+  const toneClass = WIDGET_TONE_CLASSES[widget.tone];
+
   return (
-    <div 
-      onClick={(e) => {
-        // Solo abrimos la app si NO estamos editando
-        if (!isEditing && onOpenApp) {
-          const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-          onOpenApp(rect);
-        }
-      }}
-      className={`h-full w-full rounded-3xl relative transition-all duration-500 ${color} group shadow-xl overflow-hidden backdrop-blur-2xl border border-white/[0.08] ${!isEditing ? 'cursor-pointer hover:brightness-[1.06] active:brightness-[0.98]' : ''}`}
+    <div
+      className={`group relative h-full w-full overflow-hidden rounded-[2rem] border border-white/10 ${toneClass} shadow-[0_24px_64px_rgba(0,0,0,0.35)] backdrop-blur-2xl transition-all duration-300`}
     >
-      
-      {/* --- CAPA DE EDICIÓN (Solo visible en modo lápiz) --- */}
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.14),transparent_40%)]" />
+      <div className="relative z-10 flex h-full w-full flex-col p-4 md:p-5">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold tracking-tight text-white">{definition.name}</div>
+            <div className="mt-1 line-clamp-1 text-xs text-white/45">{definition.description}</div>
+          </div>
+
+          {!isEditing && definition.expandable && (
+            <button
+              onClick={onExpand}
+              className="rounded-full border border-white/10 bg-white/[0.06] p-2 text-white/70 transition hover:bg-white/[0.1] hover:text-white"
+            >
+              <Maximize2 size={16} />
+            </button>
+          )}
+        </div>
+
+        <div className="min-h-0 flex-1">{definition.renderPreview(widget)}</div>
+      </div>
+
       <AnimatePresence>
         {isEditing && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black/40 backdrop-blur-[2px] z-50 flex items-center justify-center gap-2"
-            onClick={(e) => e.stopPropagation()} // Evita clicks fantasma
+            className="absolute inset-0 z-20 flex items-center justify-center gap-2 bg-black/35 backdrop-blur-[2px]"
           >
-             {/* Botón Tamaño */}
-             <button 
-               onPointerDown={(e) => e.stopPropagation()}
-               onClick={onOpenSize} 
-               className="p-3 bg-white/90 hover:bg-white text-black rounded-full shadow-lg transition-transform hover:scale-110 active:scale-90 backdrop-blur-md"
-             >
-               <Maximize2 size={18} />
-             </button>
+            <button
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={onOpenSize}
+              className="rounded-full border border-white/10 bg-white/90 p-3 text-black shadow-lg transition hover:scale-105 active:scale-95"
+              title="Cambiar tamaño"
+            >
+              <Maximize2 size={18} />
+            </button>
 
-             {/* Botón Color */}
-             <button 
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={onOpenColor} 
-                className="p-3 bg-white/90 hover:bg-white text-black rounded-full shadow-lg transition-transform hover:scale-110 active:scale-90 backdrop-blur-md"
-             >
-               <Palette size={18} />
-             </button>
+            <button
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={onOpenColor}
+              className="rounded-full border border-white/10 bg-white/90 p-3 text-black shadow-lg transition hover:scale-105 active:scale-95"
+              title="Cambiar estilo"
+            >
+              <Palette size={18} />
+            </button>
 
-             {/* Botón Eliminar (Lo añadimos aquí para acceso rápido) */}
-             <button 
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => { e.stopPropagation(); onRemove(); }}
-                className="p-3 bg-red-500 hover:bg-red-400 text-white rounded-full shadow-lg transition-transform hover:scale-110 active:scale-90 backdrop-blur-md"
-             >
-               <X size={18} />
-             </button>
-
+            <button
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={onRemove}
+              className="rounded-full border border-red-400/20 bg-red-500/90 p-3 text-white shadow-lg transition hover:scale-105 active:scale-95"
+              title="Eliminar"
+            >
+              <Trash2 size={18} />
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* --- CONTENIDO DEL WIDGET --- */}
-      <div className="w-full h-full relative z-0 p-4 md:p-5">
-        {children ? (
-          children 
-        ) : (
-          /* Placeholder por si no hay contenido específico (A, B, C...) */
-          <div className="w-full h-full flex flex-col items-center justify-center">
-            <h1 className="text-4xl md:text-6xl font-bold text-white/10 select-none tracking-tighter">{type}</h1>
-            <p className="text-white/30 font-mono text-[10px] mt-1 uppercase tracking-widest">{size}</p>
-          </div>
-        )}
-      </div>
-
     </div>
   );
 }
