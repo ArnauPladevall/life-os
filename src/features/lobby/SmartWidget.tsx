@@ -1,101 +1,102 @@
-"use client";
+create extension if not exists pgcrypto;
 
-import { Maximize2, Palette, Trash2 } from "lucide-react";
-import { AnimatePresence, motion } from "framer-motion";
-import { getWidgetDefinition, WIDGET_TONE_CLASSES } from "./widgetRegistry";
-import type { LobbyWidget } from "./types";
+create table if not exists public.vault_security (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  pin_hash text not null,
+  updated_at timestamptz not null default now()
+);
 
-interface Props {
-  widget: LobbyWidget;
-  isEditing: boolean;
-  onOpenColor: (e: React.PointerEvent) => void;
-  onOpenSize: (e: React.PointerEvent) => void;
-  onRemove: () => void;
-  onExpand: () => void;
-}
+create table if not exists public.vault_entries (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  name text not null,
+  login text not null,
+  password_encrypted text not null,
+  url text,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
 
-export function SmartWidget({
-  widget,
-  isEditing,
-  onOpenColor,
-  onOpenSize,
-  onRemove,
-  onExpand,
-}: Props) {
-  const definition = getWidgetDefinition(widget.type);
+create index if not exists vault_entries_user_id_idx
+  on public.vault_entries(user_id);
 
-  if (!definition) {
-    return (
-      <div className="flex h-full w-full items-center justify-center rounded-[2rem] border border-white/10 bg-white/[0.03] text-sm text-white/45">
-        Unknown widget: {widget.type}
-      </div>
-    );
-  }
+create index if not exists vault_entries_user_id_name_idx
+  on public.vault_entries(user_id, name);
 
-  const toneClass = WIDGET_TONE_CLASSES[widget.tone];
+alter table public.vault_security enable row level security;
+alter table public.vault_entries enable row level security;
 
-  return (
-    <div
-      className={`group relative h-full w-full overflow-hidden rounded-[2rem] border border-white/10 ${toneClass} shadow-[0_24px_64px_rgba(0,0,0,0.35)] backdrop-blur-2xl transition-all duration-300`}
-    >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.14),transparent_40%)]" />
-      <div className="relative z-10 flex h-full w-full flex-col p-4 md:p-5">
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="truncate text-sm font-semibold tracking-tight text-white">{definition.name}</div>
-            <div className="mt-1 line-clamp-1 text-xs text-white/45">{definition.description}</div>
-          </div>
+drop policy if exists "vault_security_select_own" on public.vault_security;
+drop policy if exists "vault_security_insert_own" on public.vault_security;
+drop policy if exists "vault_security_update_own" on public.vault_security;
+drop policy if exists "vault_security_delete_own" on public.vault_security;
 
-          {!isEditing && definition.expandable && (
-            <button
-              onClick={onExpand}
-              className="rounded-full border border-white/10 bg-white/[0.06] p-2 text-white/70 transition hover:bg-white/[0.1] hover:text-white"
-            >
-              <Maximize2 size={16} />
-            </button>
-          )}
-        </div>
+create policy "vault_security_select_own"
+  on public.vault_security
+  for select
+  using (auth.uid() = user_id);
 
-        <div className="min-h-0 flex-1">{definition.renderPreview(widget)}</div>
-      </div>
+create policy "vault_security_insert_own"
+  on public.vault_security
+  for insert
+  with check (auth.uid() = user_id);
 
-      <AnimatePresence>
-        {isEditing && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 z-20 flex items-center justify-center gap-2 bg-black/35 backdrop-blur-[2px]"
-          >
-            <button
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={onOpenSize}
-              className="rounded-full border border-white/10 bg-white/90 p-3 text-black shadow-lg transition hover:scale-105 active:scale-95"
-              title="Cambiar tamaño"
-            >
-              <Maximize2 size={18} />
-            </button>
+create policy "vault_security_update_own"
+  on public.vault_security
+  for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
 
-            <button
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={onOpenColor}
-              className="rounded-full border border-white/10 bg-white/90 p-3 text-black shadow-lg transition hover:scale-105 active:scale-95"
-              title="Cambiar estilo"
-            >
-              <Palette size={18} />
-            </button>
+create policy "vault_security_delete_own"
+  on public.vault_security
+  for delete
+  using (auth.uid() = user_id);
 
-            <button
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={onRemove}
-              className="rounded-full border border-red-400/20 bg-red-500/90 p-3 text-white shadow-lg transition hover:scale-105 active:scale-95"
-              title="Eliminar"
-            >
-              <Trash2 size={18} />
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
+drop policy if exists "vault_entries_select_own" on public.vault_entries;
+drop policy if exists "vault_entries_insert_own" on public.vault_entries;
+drop policy if exists "vault_entries_update_own" on public.vault_entries;
+drop policy if exists "vault_entries_delete_own" on public.vault_entries;
+
+create policy "vault_entries_select_own"
+  on public.vault_entries
+  for select
+  using (auth.uid() = user_id);
+
+create policy "vault_entries_insert_own"
+  on public.vault_entries
+  for insert
+  with check (auth.uid() = user_id);
+
+create policy "vault_entries_update_own"
+  on public.vault_entries
+  for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create policy "vault_entries_delete_own"
+  on public.vault_entries
+  for delete
+  using (auth.uid() = user_id);
+
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists vault_security_set_updated_at on public.vault_security;
+create trigger vault_security_set_updated_at
+before update on public.vault_security
+for each row
+execute function public.set_updated_at();
+
+drop trigger if exists vault_entries_set_updated_at on public.vault_entries;
+create trigger vault_entries_set_updated_at
+before update on public.vault_entries
+for each row
+execute function public.set_updated_at();

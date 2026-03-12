@@ -273,6 +273,11 @@ export default function LobbyGrid() {
   };
 
   const handleAddWidget = (type: string) => {
+    if (type === "recipes" && widgets.some((widget) => widget.type === "recipes")) {
+      setShowLibrary(false);
+      return;
+    }
+
     const widget = createWidgetInstance(type);
     if (!widget) return;
 

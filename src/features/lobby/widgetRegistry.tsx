@@ -3,7 +3,8 @@
 import type { LobbyWidget, WidgetDefinition, WidgetTone } from "./types";
 import PomodoroPreview from "@/features/widgets/pomodoro/PomodoroPreview";
 import PomodoroExpanded from "@/features/widgets/pomodoro/PomodoroExpanded";
-
+import RecipesApp from "@/features/widgets/recipes/RecipesApp";
+import RecipesLauncherPreview from "@/features/widgets/recipes/RecipesLauncherPreview";
 
 export const WIDGET_TONE_CLASSES: Record<WidgetTone, string> = {
   neutral: "bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))]",
@@ -26,8 +27,18 @@ export const WIDGET_DEFINITIONS: WidgetDefinition[] = [
     renderPreview: (widget) => <PomodoroPreview widget={widget} />,
     renderExpanded: (widget) => <PomodoroExpanded widget={widget} />,
   },
+  {
+    type: "recipes",
+    name: "Recipes",
+    description: "Personal recipe book and weekly meal planner",
+    defaultSize: "1x1",
+    supportedSizes: ["1x1"],
+    expandable: true,
+    defaultTone: "amber",
+    renderPreview: () => <RecipesLauncherPreview compact />,
+    renderExpanded: () => <RecipesApp />,
+  },
 ];
-
 
 export const WIDGET_MAP = Object.fromEntries(
   WIDGET_DEFINITIONS.map((definition) => [definition.type, definition])
