@@ -44,7 +44,7 @@ const DEFAULT_CONFIG: PomodoroConfig = {
   cyclesBeforeLongBreak: 4,
 };
 
-const LOCAL_STORAGE_KEY = "lifeos:pomodoro:config";
+const LOCAL_STORAGE_KEY_PREFIX = "lifeos:pomodoro:config";
 
 const store = new Map<string, PomodoroStoreEntry>();
 
@@ -62,6 +62,10 @@ function getSupabaseClient() {
   return supabaseClient;
 }
 
+function getLocalStorageKey(userId: string) {
+  return `${LOCAL_STORAGE_KEY_PREFIX}:${userId}`;
+}
+
 function clampConfig(config: PomodoroConfig): PomodoroConfig {
   return {
     workMinutes: Math.max(1, Math.min(180, Math.floor(config.workMinutes || DEFAULT_CONFIG.workMinutes))),
@@ -77,11 +81,11 @@ function clampConfig(config: PomodoroConfig): PomodoroConfig {
   };
 }
 
-function readLocalConfig(): PomodoroConfig | null {
-  if (typeof window === "undefined") return null;
+function readLocalConfig(userId: string | null): PomodoroConfig | null {
+  if (typeof window === "undefined" || !userId) return null;
 
   try {
-    const raw = window.localStorage.getItem(LOCAL_STORAGE_KEY);
+    const raw = window.localStorage.getItem(getLocalStorageKey(userId));
     if (!raw) return null;
 
     const parsed = JSON.parse(raw);
@@ -99,12 +103,44 @@ function readLocalConfig(): PomodoroConfig | null {
   }
 }
 
-function writeLocalConfig(config: PomodoroConfig) {
-  if (typeof window === "undefined") return;
+function writeLocalConfig(userId: string | null, config: PomodoroConfig) {
+  if (typeof window === "undefined" || !userId) return;
 
   try {
-    window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(config));
+    window.localStorage.setItem(getLocalStorageKey(userId), JSON.stringify(config));
   } catch {}
+}
+
+async function resolveCurrentUserId(supabase: SupabaseClient | null): Promise<string | null> {
+  if (!supabase) return null;
+
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (session?.user?.id) return session.user.id;
+  } catch {}
+
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (user?.id) return user.id;
+  } catch {}
+
+  try {
+    await new Promise((resolve) => window.setTimeout(resolve, 150));
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (session?.user?.id) return session.user.id;
+  } catch {}
+
+  return null;
 }
 
 function getDurationMinutesForMode(config: PomodoroConfig, mode: PomodoroMode) {
@@ -279,52 +315,44 @@ async function loadConfigFromSupabase(widgetId: string) {
   if (entry.configLoaded || entry.configLoading) return;
 
   stopInterval(widgetId);
+  entry.configLoading = true;
+  notify(widgetId);
 
-  const localConfig = readLocalConfig();
+  const supabase = getSupabaseClient();
+  const userId = await resolveCurrentUserId(supabase);
+
+  const localConfig = readLocalConfig(userId);
 
   if (localConfig) {
     const localNext = applyResetRuntime(entry, localConfig);
-    store.set(widgetId, localNext);
-    notify(widgetId);
-  } else {
-    const localNext = applyResetRuntime(entry, entry.config);
+    localNext.configLoading = true;
     store.set(widgetId, localNext);
     notify(widgetId);
   }
 
-  const supabase = getSupabaseClient();
-
-  if (!supabase) {
-    const latest = getOrCreateEntry(widgetId);
-    latest.configLoaded = true;
+  if (!supabase || !userId) {
+    const fallbackConfig = localConfig ?? entry.config;
+    const next = applyResetRuntime(entry, fallbackConfig);
+    next.configLoaded = true;
+    next.configLoading = false;
+    store.set(widgetId, next);
     notify(widgetId);
     return;
   }
 
-  entry.configLoading = true;
-  notify(widgetId);
-
   try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      entry.configLoaded = true;
-      entry.configLoading = false;
-      notify(widgetId);
-      return;
-    }
-
     const { data, error } = await supabase
       .from("profiles")
       .select("widgets_state")
-      .eq("id", user.id)
+      .eq("id", userId)
       .maybeSingle();
 
     if (error) {
-      entry.configLoaded = true;
-      entry.configLoading = false;
+      const fallbackConfig = localConfig ?? entry.config;
+      const next = applyResetRuntime(getOrCreateEntry(widgetId), fallbackConfig);
+      next.configLoaded = true;
+      next.configLoading = false;
+      store.set(widgetId, next);
       notify(widgetId);
       return;
     }
@@ -341,7 +369,7 @@ async function loadConfigFromSupabase(widgetId: string) {
         ),
       });
 
-      writeLocalConfig(nextConfig);
+      writeLocalConfig(userId, nextConfig);
 
       const latestEntry = getOrCreateEntry(widgetId);
       const next = applyResetRuntime(latestEntry, nextConfig);
@@ -352,12 +380,18 @@ async function loadConfigFromSupabase(widgetId: string) {
       return;
     }
 
-    entry.configLoaded = true;
-    entry.configLoading = false;
+    const fallbackConfig = localConfig ?? entry.config;
+    const next = applyResetRuntime(getOrCreateEntry(widgetId), fallbackConfig);
+    next.configLoaded = true;
+    next.configLoading = false;
+    store.set(widgetId, next);
     notify(widgetId);
   } catch {
-    entry.configLoaded = true;
-    entry.configLoading = false;
+    const fallbackConfig = localConfig ?? entry.config;
+    const next = applyResetRuntime(getOrCreateEntry(widgetId), fallbackConfig);
+    next.configLoaded = true;
+    next.configLoading = false;
+    store.set(widgetId, next);
     notify(widgetId);
   }
 }
@@ -365,29 +399,20 @@ async function loadConfigFromSupabase(widgetId: string) {
 async function saveConfigToSupabase(widgetId: string, config: PomodoroConfig) {
   const entry = getOrCreateEntry(widgetId);
   const supabase = getSupabaseClient();
+  const userId = await resolveCurrentUserId(supabase);
 
-  writeLocalConfig(config);
+  writeLocalConfig(userId, config);
 
-  if (!supabase) return;
+  if (!supabase || !userId) return;
 
   entry.configSaving = true;
   notify(widgetId);
 
   try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      entry.configSaving = false;
-      notify(widgetId);
-      return;
-    }
-
     const { data: currentProfile } = await supabase
       .from("profiles")
       .select("widgets_state")
-      .eq("id", user.id)
+      .eq("id", userId)
       .maybeSingle();
 
     const currentWidgetsState = currentProfile?.widgets_state ?? {};
@@ -405,7 +430,7 @@ async function saveConfigToSupabase(widgetId: string, config: PomodoroConfig) {
           },
         },
       })
-      .eq("id", user.id);
+      .eq("id", userId);
   } finally {
     const latest = getOrCreateEntry(widgetId);
     latest.configSaving = false;
