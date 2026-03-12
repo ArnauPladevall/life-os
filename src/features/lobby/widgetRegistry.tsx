@@ -3,8 +3,11 @@
 import type { LobbyWidget, WidgetDefinition, WidgetTone } from "./types";
 import PomodoroPreview from "@/features/widgets/pomodoro/PomodoroPreview";
 import PomodoroExpanded from "@/features/widgets/pomodoro/PomodoroExpanded";
+
 import RecipesApp from "@/features/widgets/recipes/RecipesApp";
 import RecipesLauncherPreview from "@/features/widgets/recipes/RecipesLauncherPreview";
+
+import VaultApp from "@/features/widgets/vault/VaultApp";
 
 export const WIDGET_TONE_CLASSES: Record<WidgetTone, string> = {
   neutral: "bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))]",
@@ -37,6 +40,24 @@ export const WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultTone: "amber",
     renderPreview: () => <RecipesLauncherPreview compact />,
     renderExpanded: () => <RecipesApp />,
+  },
+  {
+    type: "vault",
+    name: "Vault",
+    description: "Secure password manager",
+    defaultSize: "1x1",
+    supportedSizes: ["1x1"],
+    expandable: true,
+    defaultTone: "neutral",
+    renderPreview: () => (
+      <div className="flex h-full w-full cursor-pointer items-center justify-center rounded-[22px] border border-white/10 bg-white/[0.03] transition hover:bg-white/[0.06]">
+        <div className="flex flex-col items-center justify-center gap-2 text-center">
+          <div className="text-2xl leading-none">🔑</div>
+          <div className="text-xs font-medium text-white/78">Vault</div>
+        </div>
+      </div>
+    ),
+    renderExpanded: (widget) => <VaultApp widget={widget} />,
   },
 ];
 
