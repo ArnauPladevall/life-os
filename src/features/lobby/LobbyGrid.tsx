@@ -316,7 +316,7 @@ export default function LobbyGrid() {
   };
 
   const openFloatingMenu = (
-    e: React.PointerEvent,
+    e: React.MouseEvent,
     type: "color" | "size",
     widgetId: string
   ) => {

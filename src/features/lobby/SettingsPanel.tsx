@@ -30,8 +30,6 @@ export function SettingsPanel({ onClose, preferences, onUpdatePref }: Props) {
   };
 
   const prefs: Preferences = {
-    showHeader: true,
-    bgId: "aurora",
     customTitle: "Life OS",
     emoji: "💻",
     emojiPosition: "inline",

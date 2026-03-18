@@ -35,7 +35,6 @@ export function SortableWidget({ id, children, isEditing }: Props) {
       transition: {
         repeat: Infinity,
         duration: 0.24,
-        ease: "linear",
       },
     },
   };

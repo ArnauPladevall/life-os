@@ -8,8 +8,8 @@ import type { LobbyWidget } from "./types";
 interface Props {
   widget: LobbyWidget;
   isEditing: boolean;
-  onOpenColor: (e: React.PointerEvent) => void;
-  onOpenSize: (e: React.PointerEvent) => void;
+  onOpenColor: (e: React.MouseEvent) => void;
+  onOpenSize: (e: React.MouseEvent) => void;
   onRemove: () => void;
   onExpand: () => void;
 }
