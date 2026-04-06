@@ -1,8 +1,7 @@
 "use client";
 
-import { useSortable } from "@dnd-kit/sortable";
+import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { motion } from "framer-motion";
 
 interface Props {
   id: string;
@@ -11,45 +10,38 @@ interface Props {
 }
 
 export function SortableWidget({ id, children, isEditing }: Props) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id,
-    transition: {
-      duration: 220,
-      easing: "cubic-bezier(0.22, 1, 0.36, 1)",
-    },
+    disabled: !isEditing,
   });
 
   const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    zIndex: isDragging ? 100 : 1,
-    position: "relative" as const,
-    height: "100%",
-    touchAction: "none",
-  };
-
-  const jiggleVariants = {
-    idle: { rotate: 0 },
-    editing: {
-      rotate: [-0.25, 0.25, -0.25],
-      transition: {
-        repeat: Infinity,
-        duration: 0.24,
-      },
-    },
+    transform: CSS.Translate.toString(transform),
+    zIndex: isDragging ? 80 : 1,
+    touchAction: isEditing ? "none" : "auto",
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="h-full select-none">
-      <motion.div
-        className="h-full w-full"
-        variants={jiggleVariants}
-        animate={isEditing && !isDragging ? "editing" : "idle"}
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className={`h-full w-full select-none transition-[box-shadow,transform,opacity] duration-200 ${
+        isDragging
+          ? "cursor-grabbing opacity-95 shadow-[0_24px_72px_rgba(0,0,0,0.38)]"
+          : isEditing
+          ? "cursor-grab"
+          : "cursor-default"
+      }`}
+    >
+      <div
+        className={`h-full w-full transition-[transform,opacity] duration-200 ${
+          isDragging ? "scale-[1.01]" : "scale-100"
+        }`}
       >
-        <div className={`h-full w-full transition-all duration-200 ${isDragging ? "scale-[1.02] opacity-85" : "opacity-100"}`}>
-          {children}
-        </div>
-      </motion.div>
+        {children}
+      </div>
     </div>
   );
 }

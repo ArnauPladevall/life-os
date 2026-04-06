@@ -1,13 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import {
-  Image as ImageIcon,
-  Layout,
-  LogOut,
-  Type,
-  X,
-} from "lucide-react";
+import { Image as ImageIcon, Layout, LogOut, Type, X } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import type { Preferences } from "./types";
@@ -30,11 +24,13 @@ export function SettingsPanel({ onClose, preferences, onUpdatePref }: Props) {
   };
 
   const prefs: Preferences = {
-    customTitle: "Life OS",
-    emoji: "💻",
-    emojiPosition: "inline",
-    titleAlign: "center",
     ...preferences,
+    showHeader: typeof preferences.showHeader === "boolean" ? preferences.showHeader : true,
+    bgId: typeof preferences.bgId === "string" ? preferences.bgId : "aurora",
+    customTitle: typeof preferences.customTitle === "string" ? preferences.customTitle : "Life OS",
+    emoji: typeof preferences.emoji === "string" ? preferences.emoji : "💻",
+    emojiPosition: preferences.emojiPosition === "top" ? "top" : "inline",
+    titleAlign: preferences.titleAlign === "left" ? "left" : "center",
   };
 
   const backgrounds = [
@@ -70,8 +66,8 @@ export function SettingsPanel({ onClose, preferences, onUpdatePref }: Props) {
       >
         <div className="flex items-center justify-between border-b border-white/6 px-6 py-5">
           <div>
-            <h2 className="text-2xl font-semibold tracking-tight text-white">Ajustes</h2>
-            <p className="mt-1 text-sm text-white/40">Base visual y comportamiento general</p>
+            <h2 className="text-2xl font-semibold tracking-tight text-white">Settings</h2>
+            <p className="mt-1 text-sm text-white/40">Visual foundation and global behavior</p>
           </div>
 
           <button
@@ -85,11 +81,11 @@ export function SettingsPanel({ onClose, preferences, onUpdatePref }: Props) {
         <div className="custom-scrollbar space-y-7 overflow-y-auto px-6 py-6">
           <section className="space-y-4">
             <div className="text-[11px] font-semibold uppercase tracking-[0.3em] text-white/38">
-              Identidad
+              Identity
             </div>
 
             <div className="space-y-3">
-              <label className="block text-xs text-white/40">Título</label>
+              <label className="block text-xs text-white/40">Title</label>
               <div className="relative">
                 <Type size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
                 <input
@@ -103,7 +99,7 @@ export function SettingsPanel({ onClose, preferences, onUpdatePref }: Props) {
             </div>
 
             <div className="space-y-3">
-              <label className="block text-xs text-white/40">Icono</label>
+              <label className="block text-xs text-white/40">Icon</label>
               <div className="grid grid-cols-6 gap-2">
                 {EMOJIS.map((emoji, index) => (
                   <button
@@ -122,7 +118,7 @@ export function SettingsPanel({ onClose, preferences, onUpdatePref }: Props) {
             </div>
 
             <div className="space-y-3">
-              <label className="block text-xs text-white/40">Composición del encabezado</label>
+              <label className="block text-xs text-white/40">Header layout</label>
               <div className="grid grid-cols-2 gap-2 rounded-[1.25rem] border border-white/10 bg-white/[0.03] p-1">
                 <button
                   onClick={() => onUpdatePref({ ...prefs, emojiPosition: "inline" })}
@@ -130,7 +126,7 @@ export function SettingsPanel({ onClose, preferences, onUpdatePref }: Props) {
                     prefs.emojiPosition === "inline" ? "bg-white text-black" : "text-white/55"
                   }`}
                 >
-                  En línea
+                  Inline
                 </button>
                 <button
                   onClick={() => onUpdatePref({ ...prefs, emojiPosition: "top" })}
@@ -138,7 +134,7 @@ export function SettingsPanel({ onClose, preferences, onUpdatePref }: Props) {
                     prefs.emojiPosition === "top" ? "bg-white text-black" : "text-white/55"
                   }`}
                 >
-                  Vertical
+                  Stacked
                 </button>
               </div>
             </div>
@@ -146,15 +142,15 @@ export function SettingsPanel({ onClose, preferences, onUpdatePref }: Props) {
 
           <section className="space-y-4">
             <div className="text-[11px] font-semibold uppercase tracking-[0.3em] text-white/38">
-              Apariencia
+              Appearance
             </div>
 
             <div className="flex items-center justify-between rounded-[1.4rem] border border-white/10 bg-white/[0.03] px-4 py-4">
               <div className="flex items-center gap-3">
                 <Layout size={17} className="text-white/40" />
                 <div>
-                  <div className="text-sm font-medium text-white">Mostrar encabezado</div>
-                  <div className="text-xs text-white/38">Título visible en la parte superior</div>
+                  <div className="text-sm font-medium text-white">Show header</div>
+                  <div className="text-xs text-white/38">Display the board title at the top</div>
                 </div>
               </div>
 
@@ -175,7 +171,7 @@ export function SettingsPanel({ onClose, preferences, onUpdatePref }: Props) {
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-xs text-white/40">
                 <ImageIcon size={15} />
-                Fondo
+                Background
               </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -206,7 +202,7 @@ export function SettingsPanel({ onClose, preferences, onUpdatePref }: Props) {
             className="flex w-full items-center justify-center gap-2 rounded-[1.25rem] border border-red-500/15 bg-red-500/8 px-4 py-4 font-medium text-red-400 transition hover:bg-red-500/12"
           >
             <LogOut size={18} />
-            Cerrar sesión
+            Sign out
           </button>
         </div>
       </motion.div>

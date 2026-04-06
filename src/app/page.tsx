@@ -1,22 +1,21 @@
 "use client";
 
-import dynamic from 'next/dynamic';
+import dynamic from "next/dynamic";
 import { Loader2 } from "lucide-react";
 
-// Cargamos el Lobby de forma dinámica
 const LobbyGrid = dynamic(() => import("@/features/lobby/LobbyGrid"), {
   ssr: false,
   loading: () => (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[#121212] text-gray-500 gap-3">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#121212] text-gray-500">
       <Loader2 className="animate-spin text-blue-500" size={32} />
-      <p className="text-sm font-medium animate-pulse">Cargando escritorio...</p>
+      <p className="animate-pulse text-sm font-medium">Loading board...</p>
     </div>
   ),
 });
 
 export default function Home() {
   return (
-    <main className="min-h-screen relative z-10">
+    <main className="relative z-10 min-h-screen">
       <LobbyGrid />
     </main>
   );

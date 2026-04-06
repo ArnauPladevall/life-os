@@ -3,33 +3,47 @@
 import { motion } from "framer-motion";
 import { Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
-import { WIDGET_DEFINITIONS } from "./widgetRegistry";
+import { APP_DEFINITIONS, WIDGET_DEFINITIONS } from "./widgetRegistry";
 
-export function WidgetLibrary({
-  onClose,
-  onAdd,
-}: {
+interface Props {
   onClose: () => void;
-  onAdd: (type: string) => void;
-}) {
+  onAddWidget: (type: string) => void;
+  onOpenApp: (type: string) => void;
+}
+
+export function WidgetLibrary({ onClose, onAddWidget, onOpenApp }: Props) {
   const [search, setSearch] = useState("");
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return WIDGET_DEFINITIONS;
 
-    return WIDGET_DEFINITIONS.filter((widget) => {
-      return (
-        widget.name.toLowerCase().includes(term) ||
-        widget.description.toLowerCase().includes(term) ||
-        widget.type.toLowerCase().includes(term)
-      );
-    });
+    const widgets = !term
+      ? WIDGET_DEFINITIONS
+      : WIDGET_DEFINITIONS.filter((entry) => {
+          return (
+            entry.name.toLowerCase().includes(term) ||
+            entry.description.toLowerCase().includes(term) ||
+            entry.type.toLowerCase().includes(term)
+          );
+        });
+
+    const apps = !term
+      ? APP_DEFINITIONS
+      : APP_DEFINITIONS.filter((entry) => {
+          return (
+            entry.name.toLowerCase().includes(term) ||
+            entry.description.toLowerCase().includes(term) ||
+            entry.type.toLowerCase().includes(term)
+          );
+        });
+
+    return { widgets, apps };
   }, [search]);
 
   return (
     <>
-      <div className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 z-[60] bg-black/44 backdrop-blur-sm" onClick={onClose} />
+
       <motion.div
         initial={{ x: "100%" }}
         animate={{ x: 0 }}
@@ -39,10 +53,14 @@ export function WidgetLibrary({
       >
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-semibold tracking-tight text-white">Biblioteca</h2>
-            <p className="mt-1 text-sm text-white/40">Aquí aparecerán tus widgets registrados</p>
+            <h2 className="text-2xl font-semibold tracking-tight text-white">Library</h2>
+            <p className="mt-1 text-sm text-white/40">
+              Widgets stay on the board. Apps open fullscreen.
+            </p>
           </div>
+
           <button
+            type="button"
             onClick={onClose}
             className="rounded-full border border-white/10 p-2 text-white/55 transition hover:bg-white/[0.06] hover:text-white"
           >
@@ -50,45 +68,87 @@ export function WidgetLibrary({
           </button>
         </div>
 
-        <div className="relative mb-5">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={16} />
+        <div className="relative mb-6">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/28" size={16} />
           <input
             type="text"
-            placeholder="Buscar..."
+            placeholder="Search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] py-3 pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-white/22 focus:border-white/20"
+            className="w-full rounded-[1.25rem] border border-white/10 bg-white/[0.04] py-3 pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-white/20 focus:border-white/18"
           />
         </div>
 
-        <div className="custom-scrollbar flex-1 overflow-y-auto pr-1">
-          {filtered.length === 0 ? (
-            <div className="flex h-full min-h-[260px] flex-col items-center justify-center rounded-[1.6rem] border border-dashed border-white/10 bg-white/[0.02] px-6 text-center">
-              <div className="text-base font-semibold text-white">Sin widgets disponibles</div>
-              <div className="mt-2 max-w-sm text-sm leading-6 text-white/45">
-                La base está lista para producción. Cuando añadas widgets al registro, aparecerán aquí
-                automáticamente.
-              </div>
+        <div className="custom-scrollbar flex-1 space-y-8 overflow-y-auto pr-1">
+          <section>
+            <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.3em] text-white/34">
+              Widgets
             </div>
-          ) : (
+
             <div className="space-y-3">
-              {filtered.map((widget) => (
-                <button
-                  key={widget.type}
-                  onClick={() => onAdd(widget.type)}
-                  className="group flex w-full items-center justify-between rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-4 text-left transition hover:bg-white/[0.06]"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-white">{widget.name}</div>
-                    <div className="mt-1 text-xs text-white/45">{widget.description}</div>
-                    <div className="mt-2 text-[10px] uppercase tracking-[0.24em] text-white/25">
-                      Sizes: {widget.supportedSizes.join(" · ")}
-                    </div>
+              {filtered.widgets.length === 0 ? (
+                <div className="rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.02] px-6 py-10 text-center">
+                  <div className="text-base font-semibold text-white">No matching widgets</div>
+                  <div className="mt-2 text-sm leading-6 text-white/42">
+                    Register a widget definition and it will appear here automatically.
                   </div>
-                </button>
-              ))}
+                </div>
+              ) : (
+                filtered.widgets.map((widget) => (
+                  <button
+                    key={widget.type}
+                    type="button"
+                    onClick={() => onAddWidget(widget.type)}
+                    className="group flex w-full items-center gap-4 rounded-[1.45rem] border border-white/10 bg-white/[0.03] p-4 text-left transition hover:bg-white/[0.055]"
+                  >
+                    <div className="flex h-12 w-12 items-center justify-center rounded-[1rem] border border-white/10 bg-black/20 text-xl">
+                      {widget.icon}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-semibold text-white">{widget.name}</div>
+                      <div className="mt-1 text-xs text-white/42">{widget.description}</div>
+                      <div className="mt-2 text-[10px] uppercase tracking-[0.22em] text-white/24">
+                        {widget.supportedSizes.join(" · ")}
+                      </div>
+                    </div>
+                  </button>
+                ))
+              )}
             </div>
-          )}
+          </section>
+
+          <section>
+            <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.3em] text-white/34">
+              Apps
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {filtered.apps.length === 0 ? (
+                <div className="col-span-2 rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.02] px-6 py-10 text-center">
+                  <div className="text-base font-semibold text-white">No matching apps</div>
+                  <div className="mt-2 text-sm leading-6 text-white/42">
+                    App-only experiences launch without creating a board widget.
+                  </div>
+                </div>
+              ) : (
+                filtered.apps.map((app) => (
+                  <button
+                    key={app.type}
+                    type="button"
+                    onClick={() => onOpenApp(app.type)}
+                    className="group rounded-[1.45rem] border border-white/10 bg-white/[0.03] p-4 text-left transition hover:bg-white/[0.055]"
+                  >
+                    <div className="flex h-12 w-12 items-center justify-center rounded-[1rem] border border-white/10 bg-black/20 text-xl">
+                      {app.icon}
+                    </div>
+                    <div className="mt-3 text-sm font-semibold text-white">{app.name}</div>
+                    <div className="mt-1 text-xs text-white/40">Open app</div>
+                  </button>
+                ))
+              )}
+            </div>
+          </section>
         </div>
       </motion.div>
     </>

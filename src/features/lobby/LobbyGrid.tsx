@@ -4,21 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   DragEndEvent,
-  KeyboardSensor,
   PointerSensor,
   closestCenter,
+  useDroppable,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
 import {
-  SortableContext,
-  arrayMove,
-  rectSortingStrategy,
-  sortableKeyboardCoordinates,
-} from "@dnd-kit/sortable";
-import {
   Check,
-  GripHorizontal,
   LayoutGrid,
   Loader2,
   Pencil,
@@ -26,7 +19,7 @@ import {
   Settings as SettingsIcon,
   X,
 } from "lucide-react";
-import { AnimatePresence, PanInfo, motion } from "framer-motion";
+import { AnimatePresence, motion, PanInfo } from "framer-motion";
 import { createClient } from "@/lib/supabase";
 import { SortableWidget } from "./SortableWidget";
 import { SmartWidget } from "./SmartWidget";
@@ -34,8 +27,8 @@ import { SettingsPanel } from "./SettingsPanel";
 import { WidgetLibrary } from "./WidgetLibrary";
 import {
   DEFAULT_WIDGET_LAYOUT,
-  WIDGET_DEFINITIONS,
   WIDGET_TONE_CLASSES,
+  getAppDefinition,
   getWidgetDefinition,
 } from "./widgetRegistry";
 import type { LobbyWidget, Preferences, WidgetSize, WidgetTone } from "./types";
@@ -50,10 +43,10 @@ const DEFAULT_PREFERENCES: Preferences = {
 };
 
 const SIZE_LABELS: Record<WidgetSize, string> = {
-  "1x1": "Tiny",
-  "2x1": "Wide S",
+  "1x1": "Small",
+  "2x1": "Wide",
   "2x2": "Square",
-  "4x2": "Wide L",
+  "4x2": "Large",
 };
 
 const TONE_LABELS: Record<WidgetTone, string> = {
@@ -65,67 +58,148 @@ const TONE_LABELS: Record<WidgetTone, string> = {
   rose: "Rose",
 };
 
-function createWidgetInstance(type: string): LobbyWidget | null {
-  const definition = getWidgetDefinition(type);
-  if (!definition) return null;
+const BOARD_COLUMNS = 6;
+const BOARD_ROWS = 5;
+const BOARD_GAP = 18;
+const BOARD_ROW_HEIGHT = 154;
 
-  return {
-    id:
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `${type}-${Date.now()}`,
-    type,
-    size: definition.defaultSize,
-    tone: definition.defaultTone,
+function parseDropCellId(id: string) {
+  const [prefix, x, y] = id.split(":");
+
+  if (prefix !== "cell") return null;
+
+  const parsed = {
+    x: Number(x),
+    y: Number(y),
   };
+
+  if (Number.isNaN(parsed.x) || Number.isNaN(parsed.y)) {
+    return null;
+  }
+
+  return parsed;
 }
 
-function sanitizeWidgets(input: unknown): LobbyWidget[] {
+function getWidgetSpan(size: WidgetSize) {
+  switch (size) {
+    case "1x1":
+      return { w: 1, h: 1 };
+    case "2x1":
+      return { w: 2, h: 1 };
+    case "2x2":
+      return { w: 2, h: 2 };
+    case "4x2":
+      return { w: 4, h: 2 };
+    default:
+      return { w: 1, h: 1 };
+  }
+}
+
+function rectanglesOverlap(a: LobbyWidget, b: LobbyWidget) {
+  const aSpan = getWidgetSpan(a.size);
+  const bSpan = getWidgetSpan(b.size);
+
+  return !(
+    a.x + aSpan.w <= b.x ||
+    b.x + bSpan.w <= a.x ||
+    a.y + aSpan.h <= b.y ||
+    b.y + bSpan.h <= a.y
+  );
+}
+
+function canPlaceWidget(widgets: LobbyWidget[], candidate: LobbyWidget, ignoreId?: string) {
+  const span = getWidgetSpan(candidate.size);
+
+  if (candidate.x < 0 || candidate.y < 0) return false;
+  if (candidate.x + span.w > BOARD_COLUMNS) return false;
+  if (candidate.y + span.h > BOARD_ROWS) return false;
+
+  return widgets.every((widget) => {
+    if (widget.id === ignoreId) return true;
+    return !rectanglesOverlap(widget, candidate);
+  });
+}
+
+function findFirstFit(widgets: LobbyWidget[], widget: Omit<LobbyWidget, "x" | "y">) {
+  for (let y = 0; y < BOARD_ROWS; y += 1) {
+    for (let x = 0; x < BOARD_COLUMNS; x += 1) {
+      const candidate: LobbyWidget = { ...widget, page: 0, x, y };
+
+      if (canPlaceWidget(widgets, candidate, widget.id)) {
+        return candidate;
+      }
+    }
+  }
+
+  return { ...widget, page: 0, x: 0, y: 0 };
+}
+
+function flattenToSingleBoard(input: LobbyWidget[]) {
+  const flattened: LobbyWidget[] = [];
+
+  for (const widget of input) {
+    const candidate: LobbyWidget = {
+      ...widget,
+      page: 0,
+    };
+
+    if (canPlaceWidget(flattened, candidate, candidate.id)) {
+      flattened.push(candidate);
+      continue;
+    }
+
+    flattened.push(
+      findFirstFit(flattened, {
+        id: candidate.id,
+        type: candidate.type,
+        size: candidate.size,
+        tone: candidate.tone,
+        page: 0,
+      })
+    );
+  }
+
+  return flattened;
+}
+
+function normalizeWidgets(input: unknown) {
   if (!Array.isArray(input)) return DEFAULT_WIDGET_LAYOUT;
 
-  const validTypes = new Set(WIDGET_DEFINITIONS.map((definition) => definition.type));
-  const validTones = new Set<WidgetTone>(["neutral", "violet", "blue", "emerald", "amber", "rose"]);
-  const validSizes = new Set<WidgetSize>(["1x1", "2x1", "2x2", "4x2"]);
+  const normalized: LobbyWidget[] = [];
 
-  const sanitized = input
-    .map((item) => {
-      if (!item || typeof item !== "object") return null;
+  for (const item of input) {
+    if (!item || typeof item !== "object") continue;
 
-      const widget = item as Partial<LobbyWidget>;
+    const candidate = item as Partial<LobbyWidget>;
 
-      if (
-        typeof widget.id !== "string" ||
-        typeof widget.type !== "string" ||
-        !validTypes.has(widget.type)
-      ) {
-        return null;
-      }
+    if (typeof candidate.id !== "string" || typeof candidate.type !== "string") continue;
 
-      const definition = getWidgetDefinition(widget.type);
-      if (!definition) return null;
+    const definition = getWidgetDefinition(candidate.type);
+    if (!definition) continue;
 
-      const size =
-        typeof widget.size === "string" &&
-        validSizes.has(widget.size as WidgetSize) &&
-        definition.supportedSizes.includes(widget.size as WidgetSize)
-          ? (widget.size as WidgetSize)
-          : definition.defaultSize;
+    const size =
+      typeof candidate.size === "string" &&
+      definition.supportedSizes.includes(candidate.size as WidgetSize)
+        ? (candidate.size as WidgetSize)
+        : definition.defaultSize;
 
-      const tone =
-        typeof widget.tone === "string" && validTones.has(widget.tone as WidgetTone)
-          ? (widget.tone as WidgetTone)
-          : definition.defaultTone;
+    const tone =
+      typeof candidate.tone === "string" && candidate.tone in WIDGET_TONE_CLASSES
+        ? (candidate.tone as WidgetTone)
+        : definition.defaultTone;
 
-      return {
-        id: widget.id,
-        type: widget.type,
-        size,
-        tone,
-      };
-    })
-    .filter(Boolean) as LobbyWidget[];
+    normalized.push({
+      id: candidate.id,
+      type: candidate.type,
+      size,
+      tone,
+      page: 0,
+      x: typeof candidate.x === "number" ? Math.floor(candidate.x) : 0,
+      y: typeof candidate.y === "number" ? Math.floor(candidate.y) : 0,
+    });
+  }
 
-  return sanitized;
+  return flattenToSingleBoard(normalized);
 }
 
 function sanitizePreferences(input: unknown): Preferences {
@@ -143,39 +217,64 @@ function sanitizePreferences(input: unknown): Preferences {
   };
 }
 
-function getSizeClass(size: WidgetSize) {
-  switch (size) {
-    case "1x1":
-      return "col-span-1 aspect-square";
-    case "2x1":
-      return "col-span-1 md:col-span-2 aspect-[2/1]";
-    case "2x2":
-      return "col-span-1 md:col-span-2 row-span-2 aspect-square";
-    case "4x2":
-      return "col-span-2 md:col-span-4 aspect-[2/1] md:aspect-[4/1]";
-    default:
-      return "col-span-1";
+function sanitizeWidgetsState(input: unknown) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return {} as Record<string, unknown>;
   }
+
+  return input as Record<string, unknown>;
+}
+
+function createWidgetInstance(type: string, widgets: LobbyWidget[]): LobbyWidget | null {
+  const definition = getWidgetDefinition(type);
+  if (!definition) return null;
+
+  const id =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${type}-${Date.now()}`;
+
+  return findFirstFit(widgets, {
+    id,
+    type,
+    size: definition.defaultSize,
+    tone: definition.defaultTone,
+    page: 0,
+  });
 }
 
 function getBackgroundClass(bgId: string) {
   switch (bgId) {
     case "midnight":
-      return "bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.18),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(6,182,212,0.12),transparent_30%),linear-gradient(180deg,#04101d_0%,#020407_100%)]";
+      return "bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.14),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(6,182,212,0.10),transparent_28%),linear-gradient(180deg,#04070d_0%,#020306_100%)]";
     case "slate":
-      return "bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.12),transparent_28%),linear-gradient(180deg,#0a0d12_0%,#050507_100%)]";
+      return "bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.08),transparent_24%),linear-gradient(180deg,#090b10_0%,#040507_100%)]";
     case "aurora":
     default:
-      return "bg-[radial-gradient(circle_at_15%_20%,rgba(59,130,246,0.16),transparent_26%),radial-gradient(circle_at_80%_18%,rgba(139,92,246,0.18),transparent_28%),radial-gradient(circle_at_55%_72%,rgba(16,185,129,0.12),transparent_30%),linear-gradient(180deg,#06070b_0%,#040507_100%)]";
+      return "bg-[radial-gradient(circle_at_15%_18%,rgba(59,130,246,0.12),transparent_24%),radial-gradient(circle_at_80%_16%,rgba(139,92,246,0.12),transparent_26%),radial-gradient(circle_at_55%_72%,rgba(16,185,129,0.08),transparent_26%),linear-gradient(180deg,#06070b_0%,#040507_100%)]";
   }
+}
+
+function CellDropZone({ id, isEditing }: { id: string; isEditing: boolean }) {
+  const { isOver, setNodeRef } = useDroppable({ id, disabled: !isEditing });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`rounded-[1.35rem] border transition ${
+        isOver ? "border-white/18 bg-white/[0.05]" : "border-transparent bg-transparent"
+      }`}
+    />
+  );
 }
 
 export default function LobbyGrid() {
   const supabase = createClient();
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 10 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 10 },
+    })
   );
 
   const [isEditing, setIsEditing] = useState(false);
@@ -183,8 +282,10 @@ export default function LobbyGrid() {
   const [showLibrary, setShowLibrary] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [widgets, setWidgets] = useState<LobbyWidget[]>(DEFAULT_WIDGET_LAYOUT);
+  const [widgetsState, setWidgetsState] = useState<Record<string, unknown>>({});
   const [preferences, setPreferences] = useState<Preferences>(DEFAULT_PREFERENCES);
   const [expandedWidgetId, setExpandedWidgetId] = useState<string | null>(null);
+  const [expandedAppType, setExpandedAppType] = useState<string | null>(null);
   const [floatingMenu, setFloatingMenu] = useState<{
     type: "color" | "size" | null;
     widgetId: string | null;
@@ -193,8 +294,9 @@ export default function LobbyGrid() {
   }>({ type: null, widgetId: null, x: 0, y: 0 });
 
   useEffect(() => {
-    const handleClickOutside = () =>
+    const handleClickOutside = () => {
       setFloatingMenu({ type: null, widgetId: null, x: 0, y: 0 });
+    };
 
     if (floatingMenu.type) {
       window.addEventListener("click", handleClickOutside);
@@ -213,18 +315,20 @@ export default function LobbyGrid() {
 
       const { data } = await supabase
         .from("profiles")
-        .select("layout, preferences")
+        .select("layout, preferences, widgets_state")
         .eq("id", user.id)
         .maybeSingle();
 
       if (!data) {
         setWidgets(DEFAULT_WIDGET_LAYOUT);
         setPreferences(DEFAULT_PREFERENCES);
+        setWidgetsState({});
         return;
       }
 
-      setWidgets(sanitizeWidgets(data.layout));
+      setWidgets(normalizeWidgets(data.layout));
       setPreferences(sanitizePreferences(data.preferences));
+      setWidgetsState(sanitizeWidgetsState(data.widgets_state));
     };
 
     load();
@@ -234,13 +338,19 @@ export default function LobbyGrid() {
     return widgets.find((widget) => widget.id === expandedWidgetId) ?? null;
   }, [expandedWidgetId, widgets]);
 
+  const expandedApp = useMemo(() => {
+    return expandedAppType ? getAppDefinition(expandedAppType) ?? null : null;
+  }, [expandedAppType]);
+
   const handleSave = async (
     nextWidgets: LobbyWidget[] = widgets,
-    nextPreferences: Preferences = preferences
+    nextPreferences: Preferences = preferences,
+    nextWidgetsState: Record<string, unknown> = widgetsState
   ) => {
     setIsSaving(true);
     setWidgets(nextWidgets);
     setPreferences(nextPreferences);
+    setWidgetsState(nextWidgetsState);
 
     const {
       data: { user },
@@ -252,49 +362,92 @@ export default function LobbyGrid() {
         email: user.email,
         layout: nextWidgets,
         preferences: nextPreferences,
+        widgets_state: nextWidgetsState,
       });
     }
 
     setIsSaving(false);
   };
 
+  const saveSingleWidgetState = async (widgetId: string, nextState: unknown) => {
+    const nextWidgetsState = {
+      ...widgetsState,
+      [widgetId]: nextState,
+    };
+
+    await handleSave(widgets, preferences, nextWidgetsState);
+  };
+
   const handleUpdateWidget = (id: string, updates: Partial<LobbyWidget>) => {
-    setWidgets((current) =>
-      current.map((widget) => (widget.id === id ? { ...widget, ...updates } : widget))
-    );
+    setWidgets((current) => {
+      const next = flattenToSingleBoard(
+        current.map((widget) =>
+          widget.id === id ? { ...widget, ...updates, page: 0 } : widget
+        )
+      );
+
+      return next;
+    });
+
     setFloatingMenu({ type: null, widgetId: null, x: 0, y: 0 });
   };
 
   const handleRemoveWidget = (id: string) => {
     setWidgets((current) => current.filter((widget) => widget.id !== id));
+
+    setWidgetsState((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+
     if (expandedWidgetId === id) {
       setExpandedWidgetId(null);
     }
   };
 
-  const handleAddWidget = (type: string) => {
-    if (type === "recipes" && widgets.some((widget) => widget.type === "recipes")) {
-      setShowLibrary(false);
-      return;
-    }
+  const openApp = (type: string) => {
+    setExpandedWidgetId(null);
+    setExpandedAppType(type);
+    setShowLibrary(false);
+  };
 
-    const widget = createWidgetInstance(type);
+  const handleAddWidget = (type: string) => {
+    const widget = createWidgetInstance(type, widgets);
     if (!widget) return;
 
-    const next = [...widgets, widget];
-    setWidgets(next);
+    setWidgets((current) => [...current, widget]);
     setShowLibrary(false);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
+    const overId = event.over?.id;
 
-    if (!over || active.id === over.id) return;
+    if (typeof overId !== "string") return;
 
-    setWidgets((items) => {
-      const oldIndex = items.findIndex((widget) => widget.id === active.id);
-      const newIndex = items.findIndex((widget) => widget.id === over.id);
-      return arrayMove(items, oldIndex, newIndex);
+    const target = parseDropCellId(overId);
+    if (!target) return;
+
+    setWidgets((current) => {
+      const activeIndex = current.findIndex((widget) => widget.id === event.active.id);
+      if (activeIndex === -1) return current;
+
+      const activeWidget = current[activeIndex];
+
+      const candidate: LobbyWidget = {
+        ...activeWidget,
+        page: 0,
+        x: target.x,
+        y: target.y,
+      };
+
+      if (!canPlaceWidget(current, candidate, activeWidget.id)) {
+        return current;
+      }
+
+      const next = [...current];
+      next[activeIndex] = candidate;
+      return next;
     });
   };
 
@@ -311,16 +464,13 @@ export default function LobbyGrid() {
     if (draggedRight) nextAlign = "center";
 
     if (nextAlign !== preferences.titleAlign) {
-      handleSave(widgets, { ...preferences, titleAlign: nextAlign });
+      handleSave(widgets, { ...preferences, titleAlign: nextAlign }, widgetsState);
     }
   };
 
-  const openFloatingMenu = (
-    e: React.MouseEvent,
-    type: "color" | "size",
-    widgetId: string
-  ) => {
+  const openFloatingMenu = (e: React.MouseEvent, type: "color" | "size", widgetId: string) => {
     e.stopPropagation();
+
     setFloatingMenu({
       type,
       widgetId,
@@ -329,19 +479,45 @@ export default function LobbyGrid() {
     });
   };
 
+  const handleResize = (widget: LobbyWidget, size: WidgetSize) => {
+    const definition = getWidgetDefinition(widget.type);
+    if (!definition || !definition.supportedSizes.includes(size)) return;
+
+    const resizedCandidate: LobbyWidget = { ...widget, page: 0, size };
+
+    if (canPlaceWidget(widgets, resizedCandidate, widget.id)) {
+      handleUpdateWidget(widget.id, { size, page: 0 });
+      return;
+    }
+
+    const relocated = findFirstFit(
+      widgets.filter((entry) => entry.id !== widget.id),
+      { ...widget, size, page: 0 }
+    );
+
+    setWidgets((current) => current.map((entry) => (entry.id === widget.id ? relocated : entry)));
+    setFloatingMenu({ type: null, widgetId: null, x: 0, y: 0 });
+  };
+
   return (
     <div className="relative min-h-screen overflow-hidden">
-      <div className={`fixed inset-0 -z-20 transition-colors duration-700 ${getBackgroundClass(preferences.bgId)}`} />
-      <div className="pointer-events-none fixed inset-0 -z-10 opacity-80 [mask-image:radial-gradient(circle_at_center,black,transparent_80%)]">
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:42px_42px]" />
+      <div
+        className={`fixed inset-0 -z-20 transition-colors duration-700 ${getBackgroundClass(
+          preferences.bgId
+        )}`}
+      />
+      <div className="pointer-events-none fixed inset-0 -z-10 opacity-45 [mask-image:radial-gradient(circle_at_center,black,transparent_86%)]">
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:44px_44px]" />
       </div>
 
       <AnimatePresence>
         {preferences.showHeader && (
-          <div className="relative z-10 mx-auto w-full max-w-[1600px] px-6 pb-6 pt-10 md:px-8">
+          <div className="relative z-10 mx-auto w-full max-w-[1500px] px-6 pb-6 pt-10 md:px-8">
             <motion.div
               layout
-              className={`flex ${preferences.titleAlign === "left" ? "justify-start" : "justify-center"}`}
+              className={`flex ${
+                preferences.titleAlign === "left" ? "justify-start" : "justify-center"
+              }`}
             >
               <motion.div
                 drag={isEditing ? "x" : false}
@@ -352,9 +528,9 @@ export default function LobbyGrid() {
                 whileDrag={{ scale: 1.02, cursor: "grabbing" }}
                 className={`${
                   isEditing
-                    ? "cursor-grab rounded-[1.6rem] border border-white/10 bg-white/[0.04]"
+                    ? "cursor-grab rounded-[1.5rem] border border-white/10 bg-white/[0.035]"
                     : ""
-                } group relative px-4 py-3 transition-all duration-300`}
+                } px-4 py-3 transition-all duration-300`}
               >
                 <div
                   className={`${
@@ -363,66 +539,60 @@ export default function LobbyGrid() {
                       : "text-center"
                   }`}
                 >
-                  <div className={`${preferences.emojiPosition === "inline" ? "text-3xl" : "mb-2 text-5xl"}`}>
+                  <div
+                    className={`${
+                      preferences.emojiPosition === "inline"
+                        ? "text-3xl"
+                        : "mb-2 text-5xl"
+                    }`}
+                  >
                     {preferences.emoji || "💻"}
                   </div>
 
                   <div className={preferences.emojiPosition === "inline" ? "" : "text-center"}>
-                    <div className="text-[11px] uppercase tracking-[0.32em] text-white/28">
-                      Personal lobby
+                    <div className="text-[11px] uppercase tracking-[0.32em] text-white/24">
+                      Personal board
                     </div>
                     <h1 className="select-none text-3xl font-semibold tracking-[-0.03em] text-white md:text-4xl">
                       {preferences.customTitle || "Life OS"}
                     </h1>
                   </div>
                 </div>
-
-                {isEditing && (
-                  <div className="pointer-events-none absolute -bottom-8 left-1/2 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full border border-white/10 bg-[#0b0c10]/90 px-3 py-1.5 text-[11px] text-white/50 backdrop-blur-xl">
-                    <GripHorizontal size={12} />
-                    Desliza para alinear
-                  </div>
-                )}
               </motion.div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
-      <div className="mx-auto mt-2 w-full max-w-[1600px] px-4 pb-40 md:px-8">
+      <div className="mx-auto mt-2 w-full max-w-[1500px] px-4 pb-36 md:px-8">
         {widgets.length === 0 && !isEditing && (
-          <div className="mx-auto max-w-6xl rounded-[2.25rem] border border-white/8 bg-black/20 px-8 py-24 text-center shadow-[0_30px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+          <div className="mx-auto max-w-5xl rounded-[2.25rem] border border-white/8 bg-black/18 px-8 py-24 text-center shadow-[0_30px_80px_rgba(0,0,0,0.28)] backdrop-blur-xl">
             <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-[1.4rem] border border-white/10 bg-white/[0.04]">
-              <LayoutGrid size={28} className="text-white/45" />
+              <LayoutGrid size={28} className="text-white/40" />
             </div>
-            <h2 className="text-2xl font-semibold tracking-tight text-white">Tu espacio está listo</h2>
-            <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-white/50">
-              Base limpia, persistente y preparada para crecer. Desde aquí ya puedes empezar a registrar
-              tus widgets y construir el flujo que quieras.
+            <h2 className="text-2xl font-semibold tracking-tight text-white">Your board is ready</h2>
+            <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-white/45">
+              Keep only what helps at a glance. Widgets stay light, apps open fullscreen, and the board remains calm and easy to use.
             </p>
           </div>
         )}
 
-        {widgets.length === 0 && isEditing && (
-          <div className="mx-auto mb-8 max-w-6xl rounded-[2.25rem] border border-dashed border-white/10 bg-black/18 px-8 py-20 text-center backdrop-blur-xl">
-            <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-[1.2rem] border border-white/10 bg-white/[0.04]">
-              <LayoutGrid size={24} className="text-white/40" />
-            </div>
-            <div className="text-xl font-semibold tracking-tight text-white">Sin widgets aún</div>
-            <div className="mx-auto mt-3 max-w-lg text-sm leading-6 text-white/50">
-              La estructura ya está preparada. Cuando registres widgets en el sistema aparecerán aquí y
-              también en la biblioteca.
-            </div>
-          </div>
-        )}
-
         <AnimatePresence>
-          {showLibrary && <WidgetLibrary onClose={() => setShowLibrary(false)} onAdd={handleAddWidget} />}
+          {showLibrary && (
+            <WidgetLibrary
+              onClose={() => setShowLibrary(false)}
+              onAddWidget={handleAddWidget}
+              onOpenApp={openApp}
+            />
+          )}
+
           {showSettings && (
             <SettingsPanel
               onClose={() => setShowSettings(false)}
               preferences={preferences}
-              onUpdatePref={(nextPreferences) => handleSave(widgets, nextPreferences)}
+              onUpdatePref={(nextPreferences) =>
+                handleSave(widgets, nextPreferences, widgetsState)
+              }
             />
           )}
         </AnimatePresence>
@@ -438,7 +608,7 @@ export default function LobbyGrid() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="mb-2 px-2 text-[10px] uppercase tracking-[0.24em] text-white/35">
-                {floatingMenu.type === "size" ? "Tamaño" : "Estilo"}
+                {floatingMenu.type === "size" ? "Size" : "Tone"}
               </div>
 
               <div className="grid gap-2">
@@ -446,12 +616,14 @@ export default function LobbyGrid() {
                   (() => {
                     const widget = widgets.find((item) => item.id === floatingMenu.widgetId);
                     const definition = widget ? getWidgetDefinition(widget.type) : undefined;
+
                     if (!widget || !definition) return null;
 
                     return definition.supportedSizes.map((size) => (
                       <button
                         key={size}
-                        onClick={() => handleUpdateWidget(widget.id, { size })}
+                        type="button"
+                        onClick={() => handleResize(widget, size)}
                         className={`flex items-center justify-between rounded-2xl border px-3 py-2 text-sm transition ${
                           widget.size === size
                             ? "border-white bg-white text-black"
@@ -472,6 +644,7 @@ export default function LobbyGrid() {
                     return (
                       <button
                         key={tone}
+                        type="button"
                         onClick={() => handleUpdateWidget(widget.id, { tone })}
                         className={`flex items-center justify-between rounded-2xl border px-3 py-2 text-sm transition ${
                           widget.tone === tone
@@ -489,8 +662,109 @@ export default function LobbyGrid() {
           )}
         </AnimatePresence>
 
-        <div className="fixed bottom-8 left-1/2 z-[130] flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-[#0c0d11]/88 p-2 shadow-[0_20px_60px_rgba(0,0,0,0.4)] backdrop-blur-2xl">
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <section>
+            <div
+              className="relative overflow-hidden rounded-[2.35rem] border border-white/8 bg-black/18 p-5 shadow-[0_30px_80px_rgba(0,0,0,0.28)] backdrop-blur-xl"
+              style={{
+                minHeight: BOARD_ROWS * BOARD_ROW_HEIGHT + (BOARD_ROWS - 1) * BOARD_GAP + 40,
+              }}
+            >
+              <div
+                className="relative"
+                style={{
+                  height: BOARD_ROWS * BOARD_ROW_HEIGHT + (BOARD_ROWS - 1) * BOARD_GAP,
+                  ["--board-gap" as string]: `${BOARD_GAP}px`,
+                  ["--board-cell-width" as string]: `calc((100% - ${
+                    (BOARD_COLUMNS - 1) * BOARD_GAP
+                  }px) / ${BOARD_COLUMNS})`,
+                  ["--board-row-height" as string]: `${BOARD_ROW_HEIGHT}px`,
+                }}
+              >
+                <div className="pointer-events-none absolute inset-0 grid grid-cols-6 grid-rows-5 gap-[18px]">
+                  {Array.from({ length: BOARD_COLUMNS * BOARD_ROWS }, (_, index) => (
+                    <div
+                      key={`grid-${index}`}
+                      className={`rounded-[1.35rem] border ${
+                        isEditing
+                          ? "border-white/[0.045] bg-white/[0.012]"
+                          : "border-transparent bg-transparent"
+                      }`}
+                    />
+                  ))}
+                </div>
+
+                {isEditing && (
+                  <div className="absolute inset-0 grid grid-cols-6 grid-rows-5 gap-[18px]">
+                    {Array.from({ length: BOARD_COLUMNS * BOARD_ROWS }, (_, index) => {
+                      const x = index % BOARD_COLUMNS;
+                      const y = Math.floor(index / BOARD_COLUMNS);
+
+                      return (
+                        <CellDropZone
+                          key={`drop-${x}-${y}`}
+                          id={`cell:${x}:${y}`}
+                          isEditing={isEditing}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+
+                {widgets.map((widget) => {
+                  const span = getWidgetSpan(widget.size);
+
+                  return (
+                    <div
+                      key={widget.id}
+                      className="absolute"
+                      style={{
+                        left: `calc(${widget.x} * (var(--board-cell-width) + var(--board-gap)))`,
+                        top: `calc(${widget.y} * (var(--board-row-height) + var(--board-gap)))`,
+                        width: `calc(${span.w} * var(--board-cell-width) + ${
+                          (span.w - 1) * BOARD_GAP
+                        }px)`,
+                        height: `calc(${span.h} * var(--board-row-height) + ${
+                          (span.h - 1) * BOARD_GAP
+                        }px)`,
+                      }}
+                    >
+                      <SortableWidget id={widget.id} isEditing={isEditing}>
+                        <SmartWidget
+                          widget={widget}
+                          isEditing={isEditing}
+                          widgetState={widgetsState[widget.id]}
+                          onOpenApp={openApp}
+                          onSetWidgetState={(nextState) => {
+                            setWidgetsState((current) => ({
+                              ...current,
+                              [widget.id]: nextState,
+                            }));
+                          }}
+                          onOpenColor={(e) => openFloatingMenu(e, "color", widget.id)}
+                          onOpenSize={(e) => openFloatingMenu(e, "size", widget.id)}
+                          onRemove={() => handleRemoveWidget(widget.id)}
+                          onExpand={() => {
+                            const definition = getWidgetDefinition(widget.type);
+
+                            if (definition?.expandable) {
+                              setExpandedAppType(null);
+                              setExpandedWidgetId(widget.id);
+                            }
+                          }}
+                        />
+                      </SortableWidget>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+        </DndContext>
+
+        <div className="fixed bottom-8 left-1/2 z-[130] flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-[#0c0d11]/82 p-2 shadow-[0_20px_60px_rgba(0,0,0,0.36)] backdrop-blur-2xl">
           <button
+            type="button"
             onClick={() => setShowSettings(true)}
             className="rounded-full p-3 text-white/55 transition hover:bg-white/[0.06] hover:text-white"
           >
@@ -501,59 +775,38 @@ export default function LobbyGrid() {
 
           {!isEditing ? (
             <button
+              type="button"
               onClick={() => setIsEditing(true)}
-              className="flex items-center gap-2 rounded-full bg-white px-6 py-3 font-semibold text-black transition hover:bg-white/90"
+              className="flex items-center gap-2 rounded-full bg-white px-6 py-3 font-semibold text-black transition hover:bg-white/92"
             >
               <Pencil size={18} />
-              Editar
+              Edit
             </button>
           ) : (
             <>
               <button
+                type="button"
                 onClick={() => setShowLibrary(true)}
-                className="rounded-full bg-white p-3 text-black transition hover:bg-white/90"
+                className="rounded-full bg-white p-3 text-black transition hover:bg-white/92"
+                aria-label="Open library"
               >
                 <Plus size={22} />
               </button>
 
               <button
+                type="button"
                 onClick={() => {
                   setIsEditing(false);
-                  handleSave();
+                  handleSave(widgets, preferences, widgetsState);
                 }}
                 className="rounded-full bg-emerald-500 p-3 text-white transition hover:bg-emerald-400"
+                aria-label="Save board"
               >
                 {isSaving ? <Loader2 className="animate-spin" size={22} /> : <Check size={22} />}
               </button>
             </>
           )}
         </div>
-
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={widgets.map((widget) => widget.id)} strategy={rectSortingStrategy}>
-            <div className="grid auto-rows-min grid-cols-2 gap-4 md:grid-cols-4 md:gap-6 lg:grid-cols-6">
-              {widgets.map((widget) => (
-                <div key={widget.id} className={getSizeClass(widget.size)}>
-                  <SortableWidget id={widget.id} isEditing={isEditing}>
-                    <SmartWidget
-                      widget={widget}
-                      isEditing={isEditing}
-                      onOpenColor={(e) => openFloatingMenu(e, "color", widget.id)}
-                      onOpenSize={(e) => openFloatingMenu(e, "size", widget.id)}
-                      onRemove={() => handleRemoveWidget(widget.id)}
-                      onExpand={() => {
-                        const definition = getWidgetDefinition(widget.type);
-                        if (definition?.expandable) {
-                          setExpandedWidgetId(widget.id);
-                        }
-                      }}
-                    />
-                  </SortableWidget>
-                </div>
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
       </div>
 
       <AnimatePresence>
@@ -564,7 +817,10 @@ export default function LobbyGrid() {
             animate={{ opacity: 1, backdropFilter: "blur(10px)" }}
             exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
           >
-            <div className="absolute inset-0 bg-black/60" onClick={() => setExpandedWidgetId(null)} />
+            <div
+              className="absolute inset-0 bg-black/60"
+              onClick={() => setExpandedWidgetId(null)}
+            />
 
             <motion.div
               layoutId={`widget-expanded-${expandedWidget.id}`}
@@ -576,13 +832,57 @@ export default function LobbyGrid() {
             >
               <div className="relative h-full w-full max-h-[88vh]">
                 <button
+                  type="button"
                   onClick={() => setExpandedWidgetId(null)}
                   className="absolute right-4 top-4 z-20 rounded-full border border-white/10 bg-black/40 p-3 text-white/70 backdrop-blur-xl transition hover:text-white"
                 >
                   <X size={18} />
                 </button>
 
-                {getWidgetDefinition(expandedWidget.type)?.renderExpanded?.(expandedWidget)}
+                {getWidgetDefinition(expandedWidget.type)?.renderExpanded?.(expandedWidget, {
+                  openApp,
+                  widgetState: widgetsState[expandedWidget.id],
+                  setWidgetState: (nextState) => {
+                    void saveSingleWidgetState(expandedWidget.id, nextState);
+                  },
+                  isEditing,
+                })}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {expandedApp && (
+          <motion.div
+            className="fixed inset-0 z-[190] p-4 md:p-8"
+            initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
+            animate={{ opacity: 1, backdropFilter: "blur(10px)" }}
+            exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
+          >
+            <div
+              className="absolute inset-0 bg-black/70"
+              onClick={() => setExpandedAppType(null)}
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 24 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 24 }}
+              transition={{ type: "spring", stiffness: 220, damping: 24 }}
+              className="relative z-10 mx-auto flex h-full w-full max-w-7xl items-center justify-center"
+            >
+              <div className="relative h-full w-full max-h-[92vh]">
+                <button
+                  type="button"
+                  onClick={() => setExpandedAppType(null)}
+                  className="absolute right-4 top-4 z-20 rounded-full border border-white/10 bg-black/40 p-3 text-white/70 backdrop-blur-xl transition hover:text-white"
+                >
+                  <X size={18} />
+                </button>
+
+                {expandedApp.renderApp()}
               </div>
             </motion.div>
           </motion.div>
